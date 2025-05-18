@@ -2,32 +2,32 @@
 
 import {Ky} from './core/Ky.js';
 import {requestMethods, stop} from './core/constants.js';
-import type {KyInstance} from './types/ky.js';
+import type {GetTypedReturnKyInstance} from './types/ky.js';
 import type {Input, Options} from './types/options.js';
 import {validateAndMerge} from './utils/merge.js';
 import {type Mutable} from './utils/types.js';
 
-const createInstance = (defaults?: Partial<Options>): KyInstance => {
+const createInstance = <T extends Partial<Options>>(defaults?: T): GetTypedReturnKyInstance<T> => {
 	// eslint-disable-next-line @typescript-eslint/promise-function-async
-	const ky: Partial<Mutable<KyInstance>> = (input: Input, options?: Options) => Ky.create(input, validateAndMerge(defaults, options));
+	const ky = (<K extends Partial<Options>>(input: Input, options?: K) => Ky.create(input, validateAndMerge(defaults, options) as T & K)) as unknown as Partial<Mutable<GetTypedReturnKyInstance<T>>>;
 
 	for (const method of requestMethods) {
 		// eslint-disable-next-line @typescript-eslint/promise-function-async
-		ky[method] = (input: Input, options?: Options) => Ky.create(input, validateAndMerge(defaults, options, {method}));
+		ky[method] = <K extends Options>(input: Input, options?: K) => Ky.create(input, validateAndMerge(defaults, options, {method}) as T & K);
 	}
 
-	ky.create = (newDefaults?: Partial<Options>) => createInstance(validateAndMerge(newDefaults));
-	ky.extend = (newDefaults?: Partial<Options> | ((parentDefaults: Partial<Options>) => Partial<Options>)) => {
+	ky.create = <K extends Partial<Options>>(newDefaults?: K) => createInstance<K>(validateAndMerge(newDefaults) as K);
+	ky.extend = <K extends Partial<Options>>(newDefaults?: K | ((parentDefaults: T | Record<string | number | symbol, unknown>) => K)) => {
 		if (typeof newDefaults === 'function') {
 			newDefaults = newDefaults(defaults ?? {});
 		}
 
-		return createInstance(validateAndMerge(defaults, newDefaults));
+		return createInstance(validateAndMerge(defaults, newDefaults) as K & T) as GetTypedReturnKyInstance<K & T>;
 	};
 
 	ky.stop = stop;
 
-	return ky as KyInstance;
+	return ky as GetTypedReturnKyInstance<T>;
 };
 
 const ky = createInstance();

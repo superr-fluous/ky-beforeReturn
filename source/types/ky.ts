@@ -2,24 +2,35 @@ import {type stop} from '../core/constants.js';
 import type {Input, Options} from './options.js';
 import type {ResponsePromise} from './ResponsePromise.js';
 
-export type KyInstance = {
+type ReturnTypeOfLastSafe<T extends unknown[]> = T extends [...infer _, infer F extends (...arguments_: unknown[]) => unknown] ? ReturnType<F> : never;
+type GetBeforeReturnHookType<T extends Partial<Options>> = T extends {hooks: {beforeReturn: [...infer Q]}} ? Q : never;
+
+export type GetKyReturnType<T extends Partial<Options>> = [GetBeforeReturnHookType<T>] extends [never] ? ResponsePromise : Promise<ReturnTypeOfLastSafe<GetBeforeReturnHookType<T>>>;
+export type GetTypedReturnKyInstance<T extends Partial<Options> | undefined> = T extends undefined
+	? KyInstance<unknown>
+	: [T] extends [never]
+		? KyInstance<unknown>
+		: [GetBeforeReturnHookType<Exclude<T, undefined>>] extends [never]
+			? KyInstance<unknown>
+			: KyInstance<ReturnTypeOfLastSafe<GetBeforeReturnHookType<Exclude<T, undefined>>>>;
+
+export type KyInstance<T> = {
 	/**
 	Fetch the given `url`.
 
 	@param url - `Request` object, `URL` object, or URL string.
+
 	@returns A promise with `Body` method added.
 
 	@example
 	```
 	import ky from 'ky';
-
 	const json = await ky('https://example.com', {json: {foo: true}}).json();
-
 	console.log(json);
 	//=> `{data: '🦄'}`
 	```
 	*/
-	<T>(url: Input, options?: Options): ResponsePromise<T>;
+	<K extends Partial<Options> = never>(url: Input, options?: K): [K] extends [never] ? Promise<T> : [GetBeforeReturnHookType<K>] extends [never] ? Promise<T> : GetKyReturnType<K>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'get'}`.
@@ -27,7 +38,9 @@ export type KyInstance = {
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	get: <T>(url: Input, options?: Options) => ResponsePromise<T>;
+	get: [T] extends [never]
+		? <K>(url: Input, options?: Options) => ResponsePromise<K>
+		: (url: Input, options?: Options) => Promise<T>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'post'}`.
@@ -35,7 +48,9 @@ export type KyInstance = {
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	post: <T>(url: Input, options?: Options) => ResponsePromise<T>;
+	post: [T] extends [never]
+		? <K>(url: Input, options?: Options) => ResponsePromise<K>
+		: (url: Input, options?: Options) => Promise<T>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'put'}`.
@@ -43,7 +58,9 @@ export type KyInstance = {
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	put: <T>(url: Input, options?: Options) => ResponsePromise<T>;
+	put: [T] extends [never]
+		? <K>(url: Input, options?: Options) => ResponsePromise<K>
+		: (url: Input, options?: Options) => Promise<T>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'delete'}`.
@@ -51,7 +68,9 @@ export type KyInstance = {
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	delete: <T>(url: Input, options?: Options) => ResponsePromise<T>;
+	delete: [T] extends [never]
+		? <K>(url: Input, options?: Options) => ResponsePromise<K>
+		: (url: Input, options?: Options) => Promise<T>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'patch'}`.
@@ -59,7 +78,9 @@ export type KyInstance = {
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	patch: <T>(url: Input, options?: Options) => ResponsePromise<T>;
+	patch: [T] extends [never]
+		? <K>(url: Input, options?: Options) => ResponsePromise<K>
+		: (url: Input, options?: Options) => Promise<T>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'head'}`.
@@ -67,14 +88,16 @@ export type KyInstance = {
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	head: (url: Input, options?: Options) => ResponsePromise;
+	head: [T] extends [never]
+		? <K>(url: Input, options?: Options) => ResponsePromise<K>
+		: (url: Input, options?: Options) => Promise<T>;
 
 	/**
 	Create a new Ky instance with complete new defaults.
 
 	@returns A new Ky instance.
 	*/
-	create: (defaultOptions?: Options) => KyInstance;
+	create: <K extends Partial<Options>>(defaultOptions?: K) => GetTypedReturnKyInstance<K>;
 
 	/**
 	Create a new Ky instance with some defaults overridden with your own.
@@ -100,7 +123,10 @@ export type KyInstance = {
 
 	@returns A new Ky instance.
 	*/
-	extend: (defaultOptions: Options | ((parentOptions: Options) => Options)) => KyInstance;
+	extend: <K extends Partial<Options>>(
+		defaultOptions: K | ((parentOptions: T | Record<string | number | symbol, unknown >
+		) => K),
+	) => GetTypedReturnKyInstance<K>;
 
 	/**
 	A `Symbol` that can be returned by a `beforeRetry` hook to stop the retry. This will also short circuit the remaining `beforeRetry` hooks.
