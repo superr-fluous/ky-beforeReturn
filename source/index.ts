@@ -13,7 +13,7 @@ const createInstance = <T extends Partial<Options>>(defaults?: T): GetTypedRetur
 
 	for (const method of requestMethods) {
 		// eslint-disable-next-line @typescript-eslint/promise-function-async
-		ky[method] = <K extends Options>(input: Input, options?: K) => Ky.create(input, validateAndMerge(defaults, options, {method}) as T & K);
+		ky[method] = (<Q extends Partial<Options>>(input: Input, options?: Q) => Ky.create(input, validateAndMerge(defaults, options, {method}) as T & Q)) as GetTypedReturnKyInstance<T>;
 	}
 
 	ky.create = <K extends Partial<Options>>(newDefaults?: K) => createInstance<K>(validateAndMerge(newDefaults) as K);
