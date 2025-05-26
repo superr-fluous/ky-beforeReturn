@@ -2,32 +2,39 @@ import {type stop} from '../core/constants.js';
 import type {Input, Options} from './options.js';
 import type {ResponsePromise} from './ResponsePromise.js';
 
-type ReturnTypeOfLastSafe<T extends unknown[]> = T extends [...infer _, infer F extends (...arguments_: unknown[]) => unknown] ? ReturnType<F> : never;
+type ReturnTypeOfLastSafe<T extends unknown[]> = T extends [...infer _, infer F extends (...arguments_: unknown[]) => unknown] ? ReturnType<F> : unknown;
 type GetBeforeReturnHookType<T extends Partial<Options>> = T extends {hooks: {beforeReturn: [...infer Q]}} ? Q : never;
 
-export type GetKyReturnType<T extends Partial<Options>> = [GetBeforeReturnHookType<T>] extends [never] ? ResponsePromise : Promise<ReturnTypeOfLastSafe<GetBeforeReturnHookType<T>>>;
+export type GetKyReturnType<T extends Partial<Options>> = GetBeforeReturnHookType<T> extends never[] ? ResponsePromise : Promise<ReturnTypeOfLastSafe<GetBeforeReturnHookType<T>>>;
+
 export type GetTypedReturnKyInstance<T extends Partial<Options> | undefined> = T extends undefined
-	? KyInstance<unknown>
-	: [T] extends [never]
-		? KyInstance<unknown>
-		: [GetBeforeReturnHookType<Exclude<T, undefined>>] extends [never]
-			? KyInstance<unknown>
-			: KyInstance<GetKyReturnType<Exclude<T, undefined>>>;
+	? KyInstance
+	: GetBeforeReturnHookType<Exclude<T, undefined>> extends never
+		? KyInstance
+		: KyInstance<GetKyReturnType<Exclude<T, undefined>>>;
 
-export type KyMethodReturn<OverrideOptions extends Partial<Options> | never = never, DefaultReturn = unknown> = [OverrideOptions] extends [never]
-		? DefaultReturn extends unknown
-		? ResponsePromise<unknown>
-			: Promise<DefaultReturn>
-			: [GetBeforeReturnHookType<Exclude<OverrideOptions, never>>] extends [never]
-				? ResponsePromise<DefaultReturn>
-				: GetKyReturnType<Exclude<OverrideOptions, never>>;
+export type KyMethodReturn<OverrideOptions extends Partial<Options>, DefaultReturn = unknown> = OverrideOptions extends never
+	? DefaultReturn extends unknown
+		? ResponsePromise
+		: Promise<DefaultReturn>
+	: GetBeforeReturnHookType<Exclude<OverrideOptions, never>> extends never
+		? ResponsePromise<DefaultReturn>
+		: GetKyReturnType<Exclude<OverrideOptions, never>>;
 
-// returns true if types are compatible, false otherwise
-// ? Type ky return as never when ReturnValue is diffirent from return value from Options
-type CheckReturnTypes<ReturnValue, Opts extends Partial<Options>> = unknown extends ReturnValue ? true : GetBeforeReturnHookType<Opts> extends never ? true : Exclude<Promise<ReturnValue>, GetKyReturnType<Opts>> extends never ? true : false;
+// DefaultInstanceReturn is only specified when Ky instance is create with beforeReturn hook
+// So if it's not specified default ResponsePromise is returned otherwise just Promise with whatever is provided
+type ResolveDefaultInstanceReturn<DefaultInstanceReturn> = unknown extends DefaultInstanceReturn ? ResponsePromise : Promise<DefaultInstanceReturn>;
+export type ResolveMethodCall<DefaultInstanceReturn, MethodReturn, MethodOptions extends Partial<Options>> = unknown extends MethodReturn
+	? unknown extends MethodOptions
+		? ResolveDefaultInstanceReturn<DefaultInstanceReturn> // Both MethodReturn and MethodOptions unspecified - relying on DefaultInstanceReturn
+		: GetBeforeReturnHookType<MethodOptions> extends never // MethodReturn is not specified, MethodOptions is something
+			? ResolveDefaultInstanceReturn<DefaultInstanceReturn> // If no beforeReturn value is retrieved - DefaultInstanceReturn
+			: KyMethodReturn<MethodOptions, DefaultInstanceReturn> // If beforeReturn value retrieved - use it to get return type
+	: unknown extends MethodOptions
+		? ResponsePromise<MethodReturn> // MethodReturn is specified, MethodOptions is not - use MethodReturn
+		: KyMethodReturn<MethodOptions, MethodReturn>; // MethodReturn and MethodOptions are specified
 
-export type CallableInstance<DefaultReturn> = unknown extends DefaultReturn
-	?
+export type KyInstance<DefaultInstanceReturn = unknown> = {
 	/**
 	Fetch the given `url`.
 
@@ -43,36 +50,14 @@ export type CallableInstance<DefaultReturn> = unknown extends DefaultReturn
 	//=> `{data: '🦄'}`
 	```
 	*/
-	<K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-	:
-	/**
-	Fetch the given `url`.
-
-	@param url - `Request` object, `URL` object, or URL string.
-
-	@returns A promise with `Body` method added.
-
-	@example
-	```
-	import ky from 'ky';
-	const json = await ky('https://example.com', {json: {foo: true}}).json();
-	console.log(json);
-	//=> `{data: '🦄'}`
-	```
-	*/
-	(url: Input, options: Partial<Options>) => Promise<DefaultReturn>;
-	// <K extends Partial<Options>>(url: Input, options?: K): KyMethodReturn<K, DefaultReturn>;
-
-export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn> & {
+	<K, Q extends Partial<Options> = Options>(url: Input, options?: Q): ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 	/**
 	Fetch the given `url` using the option `{method: 'get'}`.
 
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	get: DefaultReturn extends unknown
-		? <K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-		: (url: Input, options?: Options) => Promise<DefaultReturn>;
+	get: <K, Q extends Partial<Options> = Options>(url: Input, options?: Q) => ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'post'}`.
@@ -80,9 +65,7 @@ export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	post: DefaultReturn extends unknown
-		? <K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-		: (url: Input, options?: Options) => Promise<DefaultReturn>;
+	post: <K, Q extends Partial<Options> = Options>(url: Input, options?: Q) => ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'put'}`.
@@ -90,9 +73,7 @@ export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	put: DefaultReturn extends unknown
-		? <K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-		: (url: Input, options?: Options) => Promise<DefaultReturn>;
+	put: <K, Q extends Partial<Options> = Options>(url: Input, options?: Q) => ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'delete'}`.
@@ -100,9 +81,7 @@ export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	delete: DefaultReturn extends unknown
-		? <K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-		: (url: Input, options?: Options) => Promise<DefaultReturn>;
+	delete: <K, Q extends Partial<Options> = Options>(url: Input, options?: Q) => ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'patch'}`.
@@ -110,9 +89,7 @@ export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	patch: DefaultReturn extends unknown
-		? <K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-		: (url: Input, options?: Options) => Promise<DefaultReturn>;
+	patch: <K, Q extends Partial<Options> = Options>(url: Input, options?: Q) => ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 
 	/**
 	Fetch the given `url` using the option `{method: 'head'}`.
@@ -120,9 +97,7 @@ export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn
 	@param url - `Request` object, `URL` object, or URL string.
 	@returns A promise with `Body` methods added.
 	*/
-	head: DefaultReturn extends unknown
-		? <K, Q extends Partial<Options> = Partial<Options>>(url: Input, options?: Q) => KyMethodReturn<Q extends Options ? Q : never, K>
-		: (url: Input, options?: Options) => Promise<DefaultReturn>;
+	head: <K, Q extends Partial<Options> = Options>(url: Input, options?: Q) => ResolveMethodCall<DefaultInstanceReturn, K, Q>;
 
 	/**
 	Create a new Ky instance with complete new defaults.
@@ -155,10 +130,7 @@ export type KyInstance<DefaultReturn = unknown> = CallableInstance<DefaultReturn
 
 	@returns A new Ky instance.
 	*/
-	extend: <K extends Partial<Options>>(
-		defaultOptions: K | ((parentOptions: DefaultReturn | Record<string | number | symbol, unknown >
-		) => K),
-	) => GetTypedReturnKyInstance<K>;
+	extend: <K extends Partial<Options>>(defaultOptions: K | ((parentOptions: Partial<Options>) => K)) => GetTypedReturnKyInstance<K>;
 
 	/**
 	A `Symbol` that can be returned by a `beforeRetry` hook to stop the retry. This will also short circuit the remaining `beforeRetry` hooks.

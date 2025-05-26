@@ -5,15 +5,16 @@ import {requestMethods, stop} from './core/constants.js';
 import type {GetTypedReturnKyInstance} from './types/ky.js';
 import type {Input, Options} from './types/options.js';
 import {validateAndMerge} from './utils/merge.js';
-import {type Mutable} from './utils/types.js';
 
 const createInstance = <T extends Partial<Options>>(defaults?: T): GetTypedReturnKyInstance<T> => {
 	// eslint-disable-next-line @typescript-eslint/promise-function-async
-	const ky = (<K extends Partial<Options>>(input: Input, options?: K) => Ky.create(input, validateAndMerge(defaults, options) as T & K)) as unknown as Partial<Mutable<GetTypedReturnKyInstance<T>>>;
+	const ky = (input: Input, options?: Partial<Options>) => Ky.create(input, validateAndMerge(defaults, options));
 
 	for (const method of requestMethods) {
+		// TS is a headache here because of generic values and stuff; type casting of return value is the only thing that really matters anyway
+		// @ts-expect-error
 		// eslint-disable-next-line @typescript-eslint/promise-function-async
-		ky[method] = (<Q extends Partial<Options>>(input: Input, options?: Q) => Ky.create(input, validateAndMerge(defaults, options, {method}) as T & Q)) as GetTypedReturnKyInstance<T>;
+		ky[method] = (input: Input, options?: Partial<Options>) => Ky.create(input, validateAndMerge(defaults, options, {method}));
 	}
 
 	ky.create = <K extends Partial<Options>>(newDefaults?: K) => createInstance<K>(validateAndMerge(newDefaults) as K);
